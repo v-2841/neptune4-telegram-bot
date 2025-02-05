@@ -24,10 +24,25 @@ class PrinterAPI:
         except Exception as e:
             return str(e)
 
-    # async def proc_stats(self):
-    #     async with self.session.get(
-    #             self.printer_url + '/machine/proc_stats') as response:
-    #         return await response.json()
+    async def proc_stats(self):
+        try:
+            async with self.session.get(
+                    self.printer_url + '/machine/proc_stats') as response:
+                result = await response.json()
+                result = result['result']
+                cpu_usage = result['system_cpu_usage']['cpu']
+                cpu_temp = result['cpu_temp']
+                throttled_state = result['throttled_state']
+                ram_usage = (result['system_memory']['used'] * 100
+                             / result['system_memory']['total'])
+                return (
+                    f'Загрузка процессора: {round(cpu_usage)}%\n' +
+                    f'Температура процессора: {round(cpu_temp)}°C\n' +
+                    f'Троттлинг: {"да" if throttled_state else "нет"}\n' +
+                    f'Загрузка ОЗУ: {round(ram_usage)}%\n'
+                )
+        except Exception as e:
+            return str(e)
 
     # async def server_config(self):
     #     async with self.session.get(

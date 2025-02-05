@@ -26,7 +26,7 @@ def filter_chat_ids(app: Application) -> None:
 def create_main_menu() -> ReplyKeyboardMarkup:
     """Создает клавиатуру."""
     return ReplyKeyboardMarkup(
-        [["Состояние принтера"]],
+        [["Состояние принтера", "Состояние оборудования"]],
         resize_keyboard=True, is_persistent=True,
     )
 
@@ -43,6 +43,13 @@ async def printer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет состояние принтера."""
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.printer_info()
+    await update.message.reply_text(result)
+
+
+async def proc_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет состояние оборудования."""
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    result = await printer_api.proc_stats()
     await update.message.reply_text(result)
 
 
@@ -75,5 +82,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(
         Regex("^Состояние принтера$"), printer_info))
+    app.add_handler(MessageHandler(
+        Regex("^Состояние оборудования$"), proc_stats))
     app.add_handler(MessageHandler(Text(), unknown_command))
     app.run_polling()
