@@ -22,7 +22,7 @@ class PrinterAPI:
                 data = await response.json()
                 return data['result']['state_message']
         except Exception as e:
-            return e
+            return str(e)
 
     # async def proc_stats(self):
     #     async with self.session.get(
@@ -37,7 +37,7 @@ class PrinterAPI:
     async def response_error(self, response):
         if response.status == 530:
             raise RuntimeError(
-                'Статус 530: Принтер выключен или находится не в сети')
+                'Статус 530: Принтер выключен или находится не в сети.')
         if not response.ok:
             raise RuntimeError(
                 f'Статус {response.status}: {response.reason}')
