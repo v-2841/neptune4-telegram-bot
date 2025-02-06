@@ -28,8 +28,8 @@ class PrinterAPI:
         try:
             async with self.session.get(
                     self.printer_url + '/machine/proc_stats') as response:
-                result = await response.json()
-                result = result['result']
+                data = await response.json()
+                result = data['result']
                 cpu_usage = result['system_cpu_usage']['cpu']
                 cpu_temp = result['cpu_temp']
                 throttled_state = result['throttled_state']
@@ -43,11 +43,6 @@ class PrinterAPI:
                 )
         except Exception as e:
             return str(e)
-
-    # async def server_config(self):
-    #     async with self.session.get(
-    #             self.printer_url + '/server/config') as response:
-    #         return await response.json()
 
     async def response_error(self, response):
         if response.status == 530:
