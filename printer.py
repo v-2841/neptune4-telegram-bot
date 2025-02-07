@@ -14,13 +14,24 @@ class PrinterAPI:
             raise_for_status=self.response_error,
         )
         self.printer_url = os.getenv('PRINTER_URL', 'printer_url')
+        self.klippy_states = {
+            "ready": "Klippy инициализирован и готов к командам.",
+            "startup": "Klippy находится в процессе запуска.",
+            "error": "Klippy столкнулся с ошибкой во время запуска.",
+            "shutdown": (
+                "Klippy находится в состоянии завершения работы. "
+                "Это может быть инициировано пользователем через аварийную "
+                "остановку или программным обеспечением в случае критической "
+                "ошибки во время работы."
+            ),
+        }
 
     async def printer_info(self):
         try:
             async with self.session.get(
                     self.printer_url + '/printer/info') as response:
                 data = await response.json()
-                return data['result']['state_message']
+                return self.klippy_states[data['result']['state']]
         except Exception as e:
             return str(e)
 

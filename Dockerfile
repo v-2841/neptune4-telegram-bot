@@ -10,11 +10,14 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 
 WORKDIR /app
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-root
+RUN poetry install
 
 
 # Runtime stage
 FROM python:3.12.8-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 COPY --from=builder /app/.venv .venv
