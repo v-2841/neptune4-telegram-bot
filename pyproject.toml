@@ -1,0 +1,24 @@
+[project]
+name = "neptune4-telegram-bot"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Vitaliy Pavlov",email = "v-2841@yandex.ru"}
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "load-dotenv (>=0.1.0,<0.2.0)",
+    "python-telegram-bot (>=21.10,<22.0)",
+    "aiohttp[speedups] (>=3.11.11,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry]
+package-mode = false
