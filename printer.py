@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 from aiohttp import ClientSession
 
@@ -52,6 +53,44 @@ class PrinterAPI:
                     f'Троттлинг: {"да" if throttled_state else "нет"}\n' +
                     f'Загрузка ОЗУ: {round(ram_usage)}%\n'
                 )
+        except Exception as e:
+            return str(e)
+
+    async def print_status(self):
+        try:
+            async with self.session.get(
+                    self.printer_url + '/printer/objects/query?'
+                    + 'webhooks&virtual_sdcard&print_stats') as response:
+                data = await response.json()
+            status = data['result']['status']
+            if status['webhooks']['state'] != 'ready':
+                return 'Принтер не готов: ' + status['webhooks']['message']
+            if status['print_stats']['state'] == 'standby':
+                return 'Принтер в ожидании'
+            if status['print_stats']['state'] == 'error':
+                return 'Ошибка: ' + status['print_stats']['message']
+            filename = status['print_stats']['filename']
+            if status['print_stats']['state'] == 'complete':
+                return 'Печать завершена: ' + filename
+            async with self.session.get(
+                    self.printer_url + '/server/files/metadata?'
+                    + 'filename=' + filename) as file_response:
+                file_data = await file_response.json()
+                estimated_time = file_data['result']['estimated_time']
+            prog_time = (status['virtual_sdcard']['progress'] * estimated_time)
+            eta = str(timedelta(
+                seconds=(estimated_time - prog_time))).split('.')[0]
+            print_states = {
+                'printing': 'Печатается',
+                'paused': 'Пауза',
+            }
+            return (
+                f'{print_states[status["print_stats"]["state"]]}: '
+                f'{filename}\n'
+                f'Прогресс: {round(
+                    status["virtual_sdcard"]["progress"] * 100)}%\n'
+                f'Оставшееся время: {eta}'
+            )
         except Exception as e:
             return str(e)
 
