@@ -23,7 +23,7 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
-COPY --from=builder /app/.venv .venv
+COPY --from=base /app/.venv .venv
 COPY . .
 
 CMD ["python", "bot.py"]
