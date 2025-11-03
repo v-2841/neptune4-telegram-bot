@@ -1,7 +1,9 @@
 import os
 from datetime import timedelta
+from io import BytesIO
 
 from aiohttp import ClientSession
+from PIL import Image
 
 
 class PrinterAPI:
@@ -16,16 +18,29 @@ class PrinterAPI:
         )
         self.printer_url = os.getenv('PRINTER_URL', 'printer_url')
         self.klippy_states = {
-            "ready": "Klippy инициализирован и готов к командам.",
-            "startup": "Klippy находится в процессе запуска.",
-            "error": "Klippy столкнулся с ошибкой во время запуска.",
-            "shutdown": (
-                "Klippy находится в состоянии завершения работы. "
-                "Это может быть инициировано пользователем через аварийную "
-                "остановку или программным обеспечением в случае критической "
-                "ошибки во время работы."
+            'ready': 'Klippy инициализирован и готов к командам.',
+            'startup': 'Klippy находится в процессе запуска.',
+            'error': 'Klippy столкнулся с ошибкой во время запуска.',
+            'shutdown': (
+                'Klippy находится в состоянии завершения работы. '
+                'Это может быть инициировано пользователем через аварийную '
+                'остановку или программным обеспечением в случае критической '
+                'ошибки во время работы.'
             ),
         }
+
+    async def photo(self):
+        try:
+            async with self.session.get(
+                    self.printer_url + '/webcam/?action=snapshot') as response:
+                image_bytes = await response.read()
+            with Image.open(BytesIO(image_bytes)) as image:
+                rotated_image = image.rotate(180)
+                output = BytesIO()
+                rotated_image.save(output, format=image.format or 'JPEG')
+                return output.getvalue()
+        except Exception as e:
+            return str(e)
 
     async def printer_info(self):
         try:
