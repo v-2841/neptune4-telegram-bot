@@ -71,13 +71,16 @@ class PrinterAPI:
         except Exception as e:
             return str(e)
 
+    async def _get_print_status(self):
+        async with self.session.get(
+                self.printer_url + '/printer/objects/query?'
+                + 'webhooks&virtual_sdcard&print_stats') as response:
+            data = await response.json()
+        return data['result']['status']
+
     async def print_status(self):
         try:
-            async with self.session.get(
-                    self.printer_url + '/printer/objects/query?'
-                    + 'webhooks&virtual_sdcard&print_stats') as response:
-                data = await response.json()
-            status = data['result']['status']
+            status = await self._get_print_status()
             if status['webhooks']['state'] != 'ready':
                 return 'Принтер не готов: ' + status['webhooks']['message']
             if status['print_stats']['state'] == 'standby':
@@ -108,6 +111,31 @@ class PrinterAPI:
             )
         except Exception as e:
             return str(e)
+
+    async def current_print_state(self):
+        status = await self._get_print_status()
+        if status['webhooks']['state'] != 'ready':
+            message = status['webhooks'].get('message', 'Принтер не готов')
+            return 'not_ready', 'Принтер не готов: ' + message
+
+        print_state = status['print_stats']['state']
+        filename = status['print_stats'].get('filename')
+        filename_suffix = f': {filename}' if filename else ''
+
+        if print_state == 'printing':
+            return 'printing', None
+        if print_state == 'paused':
+            return 'paused', f'Печать на паузе{filename_suffix}'
+        if print_state == 'complete':
+            return 'complete', f'Печать завершена{filename_suffix}'
+        if print_state == 'error':
+            error_message = status['print_stats'].get('message')
+            if error_message:
+                return 'error', f'Ошибка печати: {error_message}'
+            return 'error', 'Ошибка печати'
+        if print_state == 'standby':
+            return 'standby', 'Принтер в ожидании'
+        return print_state, f'Неизвестное состояние печати: {print_state}'
 
     async def response_error(self, response):
         if response.status == 530:

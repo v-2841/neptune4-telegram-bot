@@ -21,8 +21,11 @@ def filter_chat_ids(app: Application) -> None:
 
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [['Состояние принтера', 'Состояние оборудования'],
-         ['Состояние печати', 'Фото']],
+        [
+            ['Состояние принтера', 'Состояние оборудования'],
+            ['Состояние печати', 'Фото'],
+            ['Режим печати'],
+        ],
         resize_keyboard=True,
         is_persistent=True,
         one_time_keyboard=False,
@@ -78,6 +81,57 @@ async def post_shutdown(application: Application):
     await application.bot_data['printer_api'].close()
 
 
+async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    existing_job = context.chat_data.get('print_monitor_job')
+    if existing_job:
+        await update.message.reply_text(
+            'Уже слежу за печатью. Остановлюсь, как только она завершится '
+            'или прервётся.',
+        )
+        return
+
+    job = context.job_queue.run_repeating(
+        check_print_job,
+        interval=60,
+        first=0,
+        chat_id=update.effective_chat.id,
+        name=f'print-monitor-{update.effective_chat.id}',
+    )
+    context.chat_data['print_monitor_job'] = job
+    await update.message.reply_text(
+        'Включил режим печати. Проверяю состояние каждую минуту.',
+    )
+
+
+async def check_print_job(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    try:
+        state, message = await printer_api.current_print_state()
+    except Exception:
+        await context.bot.send_message(
+            chat_id=job.chat_id,
+            text='Нет соединения с принтером. Останавливаю проверки.',
+        )
+        stop_print_monitoring(context.chat_data, job)
+        return
+
+    if state == 'printing':
+        return
+
+    await context.bot.send_message(
+        chat_id=job.chat_id,
+        text=message or 'Печать остановлена. Останавливаю проверки.',
+    )
+    stop_print_monitoring(context.chat_data, job)
+
+
+def stop_print_monitoring(chat_data, job):
+    if job:
+        job.schedule_removal()
+    chat_data.pop('print_monitor_job', None)
+
+
 if __name__ == '__main__':
     app = ApplicationBuilder().token(os.getenv(
         'TELEGRAM_BOT_TOKEN', 'token')).post_init(post_init).post_shutdown(
@@ -90,6 +144,8 @@ if __name__ == '__main__':
         Regex('^Состояние оборудования$'), proc_stats))
     app.add_handler(MessageHandler(
         Regex('^Состояние печати$'), print_status))
+    app.add_handler(MessageHandler(
+        Regex('^Режим печати$'), print_mode))
     app.add_handler(MessageHandler(Regex('^Фото$'), photo))
     app.add_handler(MessageHandler(Text(), unknown_command))
     app.run_polling()
