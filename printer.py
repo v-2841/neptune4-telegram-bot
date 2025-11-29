@@ -1,9 +1,13 @@
+import logging
 import os
 from datetime import timedelta
 from io import BytesIO
 
 from aiohttp import ClientSession
 from PIL import Image
+
+
+logger = logging.getLogger(__name__)
 
 
 class PrinterAPI:
@@ -31,6 +35,7 @@ class PrinterAPI:
 
     async def photo(self):
         try:
+            logger.debug('Запрос снимка камеры')
             async with self.session.get(
                     self.printer_url + '/webcam/?action=snapshot') as response:
                 image_bytes = await response.read()
@@ -40,6 +45,7 @@ class PrinterAPI:
                 rotated_image.save(output, format=image.format or 'JPEG')
                 return output.getvalue()
         except Exception as e:
+            logger.exception('Ошибка получения фото')
             return str(e)
 
     async def printer_info(self):
@@ -47,8 +53,11 @@ class PrinterAPI:
             async with self.session.get(
                     self.printer_url + '/printer/info') as response:
                 data = await response.json()
-                return self.klippy_states[data['result']['state']]
+                state = data['result']['state']
+                logger.info(f'Состояние Klippy: {state}')
+                return self.klippy_states[state]
         except Exception as e:
+            logger.exception('Ошибка получения информации о принтере')
             return str(e)
 
     async def proc_stats(self):
@@ -62,6 +71,10 @@ class PrinterAPI:
                 throttled_state = result['throttled_state']
                 ram_usage = (result['system_memory']['used'] * 100
                              / result['system_memory']['total'])
+                logger.debug(
+                    f'proc stats cpu={cpu_usage:.2f} '
+                    f'temp={cpu_temp:.2f} throttled={throttled_state} '
+                    f'ram={ram_usage:.2f}')
                 return (
                     f'Загрузка процессора: {round(cpu_usage)}%\n' +
                     f'Температура процессора: {round(cpu_temp)}°C\n' +
@@ -69,6 +82,7 @@ class PrinterAPI:
                     f'Загрузка ОЗУ: {round(ram_usage)}%\n'
                 )
         except Exception as e:
+            logger.exception('Ошибка получения статусов системы')
             return str(e)
 
     async def _get_print_status(self):
@@ -81,6 +95,7 @@ class PrinterAPI:
     async def print_status(self):
         try:
             status = await self._get_print_status()
+            logger.debug(f'Сырые данные статуса печати: {status}')
             if status['webhooks']['state'] != 'ready':
                 return 'Принтер не готов: ' + status['webhooks']['message']
             if status['print_stats']['state'] == 'standby':
@@ -110,10 +125,12 @@ class PrinterAPI:
                 f'Оставшееся время: {eta}'
             )
         except Exception as e:
+            logger.exception('Ошибка получения статуса печати')
             return str(e)
 
     async def current_print_state(self):
         status = await self._get_print_status()
+        logger.debug(f'Текущее состояние печати: {status}')
         if status['webhooks']['state'] != 'ready':
             message = status['webhooks'].get('message', 'Принтер не готов')
             return 'not_ready', 'Принтер не готов: ' + message
@@ -142,6 +159,8 @@ class PrinterAPI:
             raise RuntimeError(
                 'Статус 530: Принтер выключен или находится не в сети.')
         if not response.ok:
+            logger.warning(
+                f'HTTP статус {response.status}: {response.reason}')
             raise RuntimeError(
                 f'Статус {response.status}: {response.reason}')
 

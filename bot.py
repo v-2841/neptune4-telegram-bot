@@ -1,3 +1,4 @@
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -7,6 +8,10 @@ from telegram.ext import (Application, ApplicationBuilder, CommandHandler,
 from telegram.ext.filters import Chat, Regex, Text
 
 from printer import PrinterAPI
+
+
+PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
+logger = logging.getLogger(__name__)
 
 
 load_dotenv()
@@ -33,63 +38,83 @@ def main_menu() -> ReplyKeyboardMarkup:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Команда /start от chat={update.effective_chat.id}')
     await update.message.reply_text(
         'Привет!', reply_markup=main_menu())
 
 
 async def printer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f'Запрошено состояние принтера chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.printer_info()
     await update.message.reply_text(result)
 
 
 async def proc_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f'Запрошено состояние оборудования chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.proc_stats()
     await update.message.reply_text(result)
 
 
 async def print_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f'Запрошено состояние печати chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.print_status()
     await update.message.reply_text(result)
 
 
 async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Запрошено фото chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     try:
         photo = await printer_api.photo()
         await update.message.reply_photo(photo)
     except Exception:
+        logger.exception(
+            f'Ошибка при получении фото chat={update.effective_chat.id}')
         await update.message.reply_text('Ошибка при получении фото')
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.warning(
+        f'Неизвестная команда chat={update.effective_chat.id} '
+        f'text={update.message.text}')
     await update.message.reply_text(
         'Неизвестная команда', reply_markup=main_menu())
 
 
 async def forbidden(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.warning(f'Доступ запрещен для chat={update.effective_chat.id}')
     await update.message.reply_text('Доступ запрещен')
 
 
 async def post_init(application: Application):
+    logger.info('Инициализация бота')
     application.bot_data['printer_api'] = PrinterAPI()
 
 
 async def post_shutdown(application: Application):
+    logger.info('Завершение работы бота')
     await application.bot_data['printer_api'].close()
 
 
 async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    existing_job = context.chat_data.get('print_monitor_job')
+    existing_job = context.chat_data.get(PRINT_MONITOR_JOB_KEY)
     if existing_job:
+        logger.info(
+            f'Print monitor already active for chat {update.effective_chat.id}')
         await update.message.reply_text(
             'Уже слежу за печатью. Остановлюсь, как только она завершится '
             'или прервётся.',
+            reply_markup=main_menu(),
         )
         return
 
+    logger.info(f'Enable print monitor for chat {update.effective_chat.id}')
     job = context.job_queue.run_repeating(
         check_print_job,
         interval=60,
@@ -97,9 +122,10 @@ async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         name=f'print-monitor-{update.effective_chat.id}',
     )
-    context.chat_data['print_monitor_job'] = job
+    context.chat_data[PRINT_MONITOR_JOB_KEY] = job
     await update.message.reply_text(
         'Включил режим печати. Проверяю состояние каждую минуту.',
+        reply_markup=main_menu(),
     )
 
 
@@ -109,6 +135,8 @@ async def check_print_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         state, message = await printer_api.current_print_state()
     except Exception:
+        logger.exception(
+            f'Printer state check failed for chat {job.chat_id}')
         await context.bot.send_message(
             chat_id=job.chat_id,
             text='Нет соединения с принтером. Останавливаю проверки.',
@@ -117,8 +145,12 @@ async def check_print_job(context: ContextTypes.DEFAULT_TYPE):
         return
 
     if state == 'printing':
+        logger.debug(f'Print continues normally; chat={job.chat_id}')
         return
 
+    logger.info(
+        f'Print state changed: chat={job.chat_id} state={state} '
+        f'message={message}')
     await context.bot.send_message(
         chat_id=job.chat_id,
         text=message or 'Печать остановлена. Останавливаю проверки.',
@@ -129,10 +161,13 @@ async def check_print_job(context: ContextTypes.DEFAULT_TYPE):
 def stop_print_monitoring(chat_data, job):
     if job:
         job.schedule_removal()
-    chat_data.pop('print_monitor_job', None)
+    chat_data.pop(PRINT_MONITOR_JOB_KEY, None)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s [%(name)s] %(message)s')
     app = ApplicationBuilder().token(os.getenv(
         'TELEGRAM_BOT_TOKEN', 'token')).post_init(post_init).post_shutdown(
             post_shutdown).build()
