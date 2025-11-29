@@ -11,9 +11,8 @@ from printer import PrinterAPI
 
 
 PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
-
-
 load_dotenv()
 
 
