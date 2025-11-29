@@ -117,7 +117,7 @@ async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job = context.job_queue.run_repeating(
         check_print_job,
         interval=60,
-        first=0,
+        first=5,
         chat_id=update.effective_chat.id,
         name=f'print-monitor-{update.effective_chat.id}',
     )
