@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.13-slim AS base
+FROM python:3.14-slim AS base
 
 ENV POETRY_HOME=/opt/poetry
 ENV PATH="$POETRY_HOME/bin:$PATH" \
@@ -16,7 +16,7 @@ RUN poetry install --only main
 
 
 # Runtime stage
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
