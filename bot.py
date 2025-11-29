@@ -104,8 +104,8 @@ async def post_shutdown(application: Application):
 async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing_job = context.chat_data.get(PRINT_MONITOR_JOB_KEY)
     if existing_job:
-        logger.info(
-            f'Print monitor already active for chat {update.effective_chat.id}')
+        logger.info(f'Print monitor already active '
+                    f'for chat {update.effective_chat.id}')
         await update.message.reply_text(
             'Уже слежу за печатью. Остановлюсь, как только она завершится '
             'или прервётся.',
