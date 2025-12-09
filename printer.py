@@ -106,8 +106,9 @@ class PrinterAPI:
             if status['print_stats']['state'] == 'complete':
                 return 'Печать завершена: ' + filename
             async with self.session.get(
-                    self.printer_url + '/server/files/metadata?'
-                    + 'filename=' + filename) as file_response:
+                    self.printer_url + '/server/files/metadata',
+                    params={'filename': filename}
+                    ) as file_response:
                 file_data = await file_response.json()
                 estimated_time = file_data['result']['estimated_time']
             prog_time = (status['virtual_sdcard']['progress'] * estimated_time)
