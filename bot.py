@@ -11,6 +11,7 @@ from printer import PrinterAPI
 
 
 PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
+PRINT_MONITOR_LAST_STATE_KEY = 'print_monitor_last_state'
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -143,8 +144,20 @@ async def check_print_job(context: ContextTypes.DEFAULT_TYPE):
         stop_print_monitoring(context.chat_data, job)
         return
 
+    last_state = context.chat_data.get(PRINT_MONITOR_LAST_STATE_KEY)
     if state == 'printing':
+        if last_state:
+            context.chat_data.pop(PRINT_MONITOR_LAST_STATE_KEY, None)
         logger.debug(f'Print continues normally; chat={job.chat_id}')
+        return
+
+    if state == 'paused':
+        if last_state != 'paused':
+            await context.bot.send_message(
+                chat_id=job.chat_id,
+                text=message or 'Печать на паузе.',
+            )
+            context.chat_data[PRINT_MONITOR_LAST_STATE_KEY] = 'paused'
         return
 
     logger.info(
@@ -161,6 +174,7 @@ def stop_print_monitoring(chat_data, job):
     if job:
         job.schedule_removal()
     chat_data.pop(PRINT_MONITOR_JOB_KEY, None)
+    chat_data.pop(PRINT_MONITOR_LAST_STATE_KEY, None)
 
 
 if __name__ == '__main__':
