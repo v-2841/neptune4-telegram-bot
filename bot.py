@@ -31,9 +31,10 @@ def filter_chat_ids(app: Application) -> None:
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            ['Состояние принтера', 'Состояние оборудования', 'Температуры'],
-            ['Состояние печати', 'Фото'],
-            ['Режим печати', 'Выключить'],
+            ['Состояние принтера', 'Состояние оборудования'],
+            ['Состояние печати', 'Температуры'],
+            ['Режим печати', 'Фото'],
+            ['Включить', 'Выключить'],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -222,8 +223,8 @@ async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 username=user,
                 password=password,
                 known_hosts=None) as connection:
-            command_1 = 'cd ~/printer_poweroff && .venv/bin/python printer.py'
-            command_2 = 'cd ~/printer_poweroff && .venv/bin/python tapo.py'
+            command_1 = 'cd ~/printer_power && .venv/bin/python printer.py'
+            command_2 = 'cd ~/printer_power && .venv/bin/python tapo.py'
             result = await connection.run(command_1, check=True)
             logger.info(
                 'Power-off command executed '
@@ -238,6 +239,44 @@ async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception(
             f'Power-off failed chat={update.effective_chat.id}')
         await update.message.reply_text('Ошибка при выключении.')
+
+
+async def poweron(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Power-on requested by chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    try:
+        async with printer_api.session.get(
+                printer_api.printer_url + '/printer/info') as response:
+            await response.read()
+        logger.info('Printer is on. Skipping power-on.')
+        await update.message.reply_text('Принтер включен.')
+        return
+    except Exception:
+        pass
+    host = os.getenv('HOME_SERVER_HOSTNAME')
+    user = os.getenv('HOME_SERVER_USER')
+    password = os.getenv('HOME_SERVER_PASSWORD')
+    if not host or not user or not password:
+        logger.error('Missing SSH credentials for power-on')
+        await update.message.reply_text(
+            'Не настроены параметры включения.')
+        return
+    try:
+        async with asyncssh.connect(
+                host,
+                username=user,
+                password=password,
+                known_hosts=None) as connection:
+            command = 'cd ~/printer_power && .venv/bin/python tapo.py'
+            result = await connection.run(command, check=True)
+            logger.info(
+                'Power-on command executed '
+                f'command="{command}" exit_status={result.exit_status}')
+        await update.message.reply_text('Принтер включен.')
+    except Exception:
+        logger.exception(
+            f'Power-on failed chat={update.effective_chat.id}')
+        await update.message.reply_text('Ошибка при включении.')
 
 
 if __name__ == '__main__':
@@ -261,6 +300,7 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(
         Regex('^Режим печати$'), print_mode))
     app.add_handler(MessageHandler(Regex('^Фото$'), photo))
+    app.add_handler(MessageHandler(Regex('^Включить$'), poweron))
     app.add_handler(MessageHandler(Regex('^Выключить$'), poweroff))
     app.add_handler(MessageHandler(Text(), unknown_command))
     app.run_polling()
