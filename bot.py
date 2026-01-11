@@ -196,6 +196,18 @@ async def poweroff(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Powering off printer chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    try:
+        async with printer_api.session.get(
+                printer_api.printer_url + '/printer/info') as response:
+            await response.read()
+    except Exception:
+        logger.exception(
+            f'Connectivity check failed before power-off '
+            f'chat={update.effective_chat.id}')
+        await update.message.reply_text(
+            'Нет соединения с принтером. Не выключаю.')
+        return
     host = os.getenv('HOME_SERVER_HOSTNAME')
     user = os.getenv('HOME_SERVER_USER')
     password = os.getenv('HOME_SERVER_PASSWORD')
