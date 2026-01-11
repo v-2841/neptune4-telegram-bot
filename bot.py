@@ -10,6 +10,7 @@ from telegram.ext.filters import Chat, Regex, Text
 from printer import PrinterAPI
 
 
+PRINT_MONITOR_INTERVAL = 15
 PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
 PRINT_MONITOR_LAST_STATE_KEY = 'print_monitor_last_state'
 logging.getLogger('httpx').setLevel(logging.WARNING)
@@ -27,7 +28,7 @@ def filter_chat_ids(app: Application) -> None:
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            ['Состояние принтера', 'Состояние оборудования'],
+            ['Состояние принтера', 'Состояние оборудования', 'Температуры'],
             ['Состояние печати', 'Фото'],
             ['Режим печати'],
         ],
@@ -64,6 +65,14 @@ async def print_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f'Запрошено состояние печати chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.print_status()
+    await update.message.reply_text(result)
+
+
+async def temperatures(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(
+        f'Запрошены температуры chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    result = await printer_api.temperatures()
     await update.message.reply_text(result)
 
 
@@ -117,7 +126,7 @@ async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Enable print monitor for chat {update.effective_chat.id}')
     job = context.job_queue.run_repeating(
         check_print_job,
-        interval=60,
+        interval=PRINT_MONITOR_INTERVAL,
         first=1,
         chat_id=update.effective_chat.id,
         name=f'print-monitor-{update.effective_chat.id}',
@@ -192,6 +201,8 @@ if __name__ == '__main__':
         Regex('^Состояние оборудования$'), proc_stats))
     app.add_handler(MessageHandler(
         Regex('^Состояние печати$'), print_status))
+    app.add_handler(MessageHandler(
+        Regex('^Температуры$'), temperatures))
     app.add_handler(MessageHandler(
         Regex('^Режим печати$'), print_mode))
     app.add_handler(MessageHandler(Regex('^Фото$'), photo))

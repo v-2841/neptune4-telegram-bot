@@ -155,6 +155,48 @@ class PrinterAPI:
             return 'standby', 'Принтер в ожидании'
         return print_state, f'Неизвестное состояние печати: {print_state}'
 
+    async def temperatures(self):
+        try:
+            params = [
+                ('extruder', 'temperature,target,power'),
+                ('heater_bed', 'temperature,target,power'),
+                ('heater_generic heater_bed_outer',
+                 'temperature,target,power'),
+            ]
+            async with self.session.get(
+                    self.printer_url + '/printer/objects/query',
+                    params=params) as response:
+                data = await response.json()
+            status = data['result']['status']
+            parts = []
+            for title, key in (
+                ('Экструдер', 'extruder'),
+                ('Стол', 'heater_bed'),
+                ('Внешний стол', 'heater_generic heater_bed_outer'),
+            ):
+                values = status.get(key)
+                if not values:
+                    continue
+                temperature = values.get('temperature')
+                target = values.get('target')
+                power = values.get('power')
+                power_pct = (round(power * 100)
+                             if power is not None else None)
+                temp_text = (f'{temperature:.1f}°C'
+                             if temperature is not None else '—')
+                target_text = (f'{target:.1f}°C'
+                               if target is not None else '—')
+                power_text = (f'{power_pct}%'
+                              if power_pct is not None else '—')
+                parts.append(
+                    f'{title}: {temp_text} / {target_text}, '
+                    f'мощность {power_text}'
+                )
+            return '\n'.join(parts) or 'Нет данных о температуре.'
+        except Exception as e:
+            logger.exception('Ошибка получения температур')
+            return str(e)
+
     async def response_error(self, response):
         if response.status == 530:
             raise RuntimeError(
