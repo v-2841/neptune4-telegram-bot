@@ -35,7 +35,7 @@ class PrinterAPI:
 
     async def photo(self):
         try:
-            logger.debug('Запрос снимка камеры')
+            logger.debug('Requesting camera snapshot')
             async with self.session.get(
                     self.printer_url + '/webcam/?action=snapshot') as response:
                 image_bytes = await response.read()
@@ -45,7 +45,7 @@ class PrinterAPI:
                 rotated_image.save(output, format=image.format or 'JPEG')
                 return output.getvalue()
         except Exception as e:
-            logger.exception('Ошибка получения фото')
+            logger.exception('Failed to fetch photo')
             return str(e)
 
     async def printer_info(self):
@@ -54,10 +54,10 @@ class PrinterAPI:
                     self.printer_url + '/printer/info') as response:
                 data = await response.json()
                 state = data['result']['state']
-                logger.info(f'Состояние Klippy: {state}')
+                logger.info(f'Klippy state: {state}')
                 return self.klippy_states[state]
         except Exception as e:
-            logger.exception('Ошибка получения информации о принтере')
+            logger.exception('Failed to fetch printer info')
             return str(e)
 
     async def proc_stats(self):
@@ -82,7 +82,7 @@ class PrinterAPI:
                     f'Загрузка ОЗУ: {round(ram_usage)}%\n'
                 )
         except Exception as e:
-            logger.exception('Ошибка получения статусов системы')
+            logger.exception('Failed to fetch system stats')
             return str(e)
 
     async def _get_print_status(self):
@@ -95,7 +95,7 @@ class PrinterAPI:
     async def print_status(self):
         try:
             status = await self._get_print_status()
-            logger.debug(f'Сырые данные статуса печати: {status}')
+            logger.debug(f'Raw print status data: {status}')
             if status['webhooks']['state'] != 'ready':
                 return 'Принтер не готов: ' + status['webhooks']['message']
             if status['print_stats']['state'] == 'standby':
@@ -126,12 +126,12 @@ class PrinterAPI:
                 f'Оставшееся время: {eta}'
             )
         except Exception as e:
-            logger.exception('Ошибка получения статуса печати')
+            logger.exception('Failed to fetch print status')
             return str(e)
 
     async def current_print_state(self):
         status = await self._get_print_status()
-        logger.debug(f'Текущее состояние печати: {status}')
+        logger.debug(f'Current print state: {status}')
         if status['webhooks']['state'] != 'ready':
             message = status['webhooks'].get('message', 'Принтер не готов')
             return 'not_ready', 'Принтер не готов: ' + message
@@ -194,7 +194,7 @@ class PrinterAPI:
                 )
             return '\n'.join(parts) or 'Нет данных о температуре.'
         except Exception as e:
-            logger.exception('Ошибка получения температур')
+            logger.exception('Failed to fetch temperatures')
             return str(e)
 
     async def response_error(self, response):
@@ -203,9 +203,9 @@ class PrinterAPI:
                 'Статус 530: Принтер выключен или находится не в сети.')
         if not response.ok:
             logger.warning(
-                f'HTTP статус {response.status}: {response.reason}')
+                f'HTTP status {response.status}: {response.reason}')
             raise RuntimeError(
-                f'Статус {response.status}: {response.reason}')
+                f'Status {response.status}: {response.reason}')
 
     async def close(self):
         await self.session.close()

@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import os
 
+import asyncssh
 from dotenv import load_dotenv
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import (Application, ApplicationBuilder, CommandHandler,
@@ -13,6 +15,7 @@ from printer import PrinterAPI
 PRINT_MONITOR_INTERVAL = 15
 PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
 PRINT_MONITOR_LAST_STATE_KEY = 'print_monitor_last_state'
+POWEROFF_COMMAND_DELAY_SECONDS = 15
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -30,7 +33,7 @@ def main_menu() -> ReplyKeyboardMarkup:
         [
             ['Состояние принтера', 'Состояние оборудования', 'Температуры'],
             ['Состояние печати', 'Фото'],
-            ['Режим печати'],
+            ['Режим печати', 'Выключить'],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -39,14 +42,14 @@ def main_menu() -> ReplyKeyboardMarkup:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f'Команда /start от chat={update.effective_chat.id}')
+    logger.info(f'/start command from chat={update.effective_chat.id}')
     await update.message.reply_text(
         'Привет!', reply_markup=main_menu())
 
 
 async def printer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
-        f'Запрошено состояние принтера chat={update.effective_chat.id}')
+        f'Printer status requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.printer_info()
     await update.message.reply_text(result)
@@ -54,7 +57,7 @@ async def printer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def proc_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
-        f'Запрошено состояние оборудования chat={update.effective_chat.id}')
+        f'Hardware status requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.proc_stats()
     await update.message.reply_text(result)
@@ -62,7 +65,7 @@ async def proc_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def print_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
-        f'Запрошено состояние печати chat={update.effective_chat.id}')
+        f'Print status requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.print_status()
     await update.message.reply_text(result)
@@ -70,44 +73,44 @@ async def print_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def temperatures(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
-        f'Запрошены температуры chat={update.effective_chat.id}')
+        f'Temperatures requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.temperatures()
     await update.message.reply_text(result)
 
 
 async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f'Запрошено фото chat={update.effective_chat.id}')
+    logger.info(f'Photo requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     try:
         photo = await printer_api.photo()
         await update.message.reply_photo(photo)
     except Exception:
         logger.exception(
-            f'Ошибка при получении фото chat={update.effective_chat.id}')
+            f'Failed to fetch photo chat={update.effective_chat.id}')
         await update.message.reply_text('Ошибка при получении фото')
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.warning(
-        f'Неизвестная команда chat={update.effective_chat.id} '
+        f'Unknown command chat={update.effective_chat.id} '
         f'text={update.message.text}')
     await update.message.reply_text(
         'Неизвестная команда', reply_markup=main_menu())
 
 
 async def forbidden(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.warning(f'Доступ запрещен для chat={update.effective_chat.id}')
+    logger.warning(f'Access forbidden for chat={update.effective_chat.id}')
     await update.message.reply_text('Доступ запрещен')
 
 
 async def post_init(application: Application):
-    logger.info('Инициализация бота')
+    logger.info('Bot initialization')
     application.bot_data['printer_api'] = PrinterAPI()
 
 
 async def post_shutdown(application: Application):
-    logger.info('Завершение работы бота')
+    logger.info('Bot shutdown')
     await application.bot_data['printer_api'].close()
 
 
@@ -186,6 +189,45 @@ def stop_print_monitoring(chat_data, job):
     chat_data.pop(PRINT_MONITOR_LAST_STATE_KEY, None)
 
 
+async def poweroff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Power-off requested by chat={update.effective_chat.id}')
+    await update.message.reply_text('Для продолжения нажмите /poweroff')
+
+
+async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Powering off printer chat={update.effective_chat.id}')
+    host = os.getenv('HOME_SERVER_HOSTNAME')
+    user = os.getenv('HOME_SERVER_USER')
+    password = os.getenv('HOME_SERVER_PASSWORD')
+    if not host or not user or not password:
+        logger.error('Missing SSH credentials for power-off')
+        await update.message.reply_text(
+            'Не настроены параметры выключения.')
+        return
+    try:
+        async with asyncssh.connect(
+                host,
+                username=user,
+                password=password,
+                known_hosts=None) as connection:
+            command_1 = 'cd ~/printer_poweroff && .venv/bin/python printer.py'
+            command_2 = 'cd ~/printer_poweroff && .venv/bin/python tapo.py'
+            result = await connection.run(command_1, check=True)
+            logger.info(
+                'Power-off command executed '
+                f'command="{command_1}" exit_status={result.exit_status}')
+            await asyncio.sleep(POWEROFF_COMMAND_DELAY_SECONDS)
+            result = await connection.run(command_2, check=True)
+            logger.info(
+                'Power-off command executed '
+                f'command="{command_2}" exit_status={result.exit_status}')
+        await update.message.reply_text('Принтер выключен.')
+    except Exception:
+        logger.exception(
+            f'Power-off failed chat={update.effective_chat.id}')
+        await update.message.reply_text('Ошибка при выключении.')
+
+
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.INFO,
@@ -195,6 +237,7 @@ if __name__ == '__main__':
             post_shutdown).build()
     filter_chat_ids(app)
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('poweroff', poweroff_command))
     app.add_handler(MessageHandler(
         Regex('^Состояние принтера$'), printer_info))
     app.add_handler(MessageHandler(
@@ -206,5 +249,6 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(
         Regex('^Режим печати$'), print_mode))
     app.add_handler(MessageHandler(Regex('^Фото$'), photo))
+    app.add_handler(MessageHandler(Regex('^Выключить$'), poweroff))
     app.add_handler(MessageHandler(Text(), unknown_command))
     app.run_polling()
