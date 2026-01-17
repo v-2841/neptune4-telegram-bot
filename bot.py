@@ -137,7 +137,7 @@ async def print_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.chat_data[PRINT_MONITOR_JOB_KEY] = job
     await update.message.reply_text(
-        'Включил режим печати. Проверяю состояние каждую минуту.',
+        'Включил режим печати.',
         reply_markup=main_menu(),
     )
 
