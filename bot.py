@@ -5,6 +5,7 @@ import os
 import asyncssh
 from dotenv import load_dotenv
 from telegram import ReplyKeyboardMarkup, Update
+from telegram.error import TelegramError
 from telegram.ext import (Application, ApplicationBuilder, CommandHandler,
                           ContextTypes, MessageHandler)
 from telegram.ext.filters import Chat, Regex, Text
@@ -16,6 +17,7 @@ PRINT_MONITOR_INTERVAL = 15
 PRINT_MONITOR_JOB_KEY = 'print_monitor_job'
 PRINT_MONITOR_LAST_STATE_KEY = 'print_monitor_last_state'
 POWEROFF_COMMAND_DELAY_SECONDS = 15
+POWEROFF_MESSAGE_DELETE_DELAY_SECONDS = 10
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -82,7 +84,6 @@ async def temperatures(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f'Temperatures requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.temperatures()
-    result += '\n\nЧтобы отключить нагрев, введите /heaters_off'
     await update.message.reply_text(result)
 
 
@@ -224,10 +225,32 @@ def stop_print_monitoring(chat_data, job):
 
 async def poweroff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Power-off requested by chat={update.effective_chat.id}')
-    await update.message.reply_text(
-        'Чтобы отменить печать, введите /cancel_printing\n\n'
+    message = await update.message.reply_text(
+        'Чтобы отменить печать, введите /cancel_printing\n\n\n'
+        'Чтобы отключить нагрев, введите /heaters_off\n\n\n'
         'Чтобы выключить принтер, введите /poweroff'
     )
+    context.job_queue.run_once(
+        delete_message,
+        when=POWEROFF_MESSAGE_DELETE_DELAY_SECONDS,
+        chat_id=update.effective_chat.id,
+        data={'message_id': message.message_id},
+        name=f'delete-poweroff-message-{message.message_id}',
+    )
+
+
+async def delete_message(context: ContextTypes.DEFAULT_TYPE):
+    message_id = context.job.data['message_id']
+    try:
+        await context.bot.delete_message(
+            chat_id=context.job.chat_id,
+            message_id=message_id,
+        )
+    except TelegramError:
+        logger.exception(
+            f'Failed to delete temporary message chat={context.job.chat_id} '
+            f'message={message_id}'
+        )
 
 
 async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
