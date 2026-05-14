@@ -31,9 +31,9 @@ def filter_chat_ids(app: Application) -> None:
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            ['Состояние принтера', 'Состояние оборудования'],
-            ['Состояние печати', 'Температуры'],
+            ['Состояние принтера', 'Состояние печати'],
             ['Режим печати', 'Фото'],
+            ['Прогрев', 'Температуры'],
             ['Включить', 'Выключить'],
         ],
         resize_keyboard=True,
@@ -52,8 +52,13 @@ async def printer_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(
         f'Printer status requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
-    result = await printer_api.printer_info()
-    await update.message.reply_text(result)
+    printer_status, hardware_status = await asyncio.gather(
+        printer_api.printer_info(),
+        printer_api.proc_stats(),
+    )
+    await update.message.reply_text(
+        f'Состояние принтера:\n{printer_status}\n\n'
+        f'Состояние оборудования:\n{hardware_status}')
 
 
 async def proc_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,6 +82,33 @@ async def temperatures(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f'Temperatures requested chat={update.effective_chat.id}')
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.temperatures()
+    result += '\n\nЧтобы отключить нагрев, введите /heaters_off'
+    await update.message.reply_text(result)
+
+
+async def preheat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Preheat requested chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    result = await printer_api.preheat()
+    await update.message.reply_text(result)
+
+
+async def heaters_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Heaters off requested chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    result = await printer_api.heaters_off()
+    await update.message.reply_text(result)
+
+
+async def cancel_printing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f'Cancel print requested chat={update.effective_chat.id}')
+    printer_api: PrinterAPI = context.bot_data['printer_api']
+    result = await printer_api.cancel_printing()
+    if result == 'Печать отменена.':
+        stop_print_monitoring(
+            context.chat_data,
+            context.chat_data.get(PRINT_MONITOR_JOB_KEY),
+        )
     await update.message.reply_text(result)
 
 
@@ -192,7 +224,10 @@ def stop_print_monitoring(chat_data, job):
 
 async def poweroff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Power-off requested by chat={update.effective_chat.id}')
-    await update.message.reply_text('Для продолжения нажмите /poweroff')
+    await update.message.reply_text(
+        'Чтобы отменить печать, введите /cancel_printing\n\n'
+        'Чтобы выключить принтер, введите /poweroff'
+    )
 
 
 async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -289,14 +324,16 @@ if __name__ == '__main__':
     filter_chat_ids(app)
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('poweroff', poweroff_command))
+    app.add_handler(CommandHandler('heaters_off', heaters_off))
+    app.add_handler(CommandHandler('cancel_printing', cancel_printing))
     app.add_handler(MessageHandler(
         Regex('^Состояние принтера$'), printer_info))
-    app.add_handler(MessageHandler(
-        Regex('^Состояние оборудования$'), proc_stats))
     app.add_handler(MessageHandler(
         Regex('^Состояние печати$'), print_status))
     app.add_handler(MessageHandler(
         Regex('^Температуры$'), temperatures))
+    app.add_handler(MessageHandler(
+        Regex('^Прогрев$'), preheat))
     app.add_handler(MessageHandler(
         Regex('^Режим печати$'), print_mode))
     app.add_handler(MessageHandler(Regex('^Фото$'), photo))

@@ -9,6 +9,9 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+PREHEAT_EXTRUDER_TARGET = 240
+PREHEAT_BED_TARGET = 80
+
 
 class PrinterAPI:
     def __init__(self):
@@ -195,6 +198,63 @@ class PrinterAPI:
             return '\n'.join(parts) or 'Нет данных о температуре.'
         except Exception as e:
             logger.exception('Failed to fetch temperatures')
+            return str(e)
+
+    async def preheat(self):
+        try:
+            script = '\n'.join((
+                'SET_HEATER_TEMPERATURE HEATER=extruder '
+                f'TARGET={PREHEAT_EXTRUDER_TARGET}',
+                'SET_HEATER_TEMPERATURE HEATER=heater_bed '
+                f'TARGET={PREHEAT_BED_TARGET}',
+                'SET_HEATER_TEMPERATURE HEATER=heater_bed_outer '
+                f'TARGET={PREHEAT_BED_TARGET}',
+            ))
+            async with self.session.post(
+                    self.printer_url + '/printer/gcode/script',
+                    json={'script': script}) as response:
+                await response.read()
+            logger.info(
+                f'Preheat targets set: extruder={PREHEAT_EXTRUDER_TARGET} '
+                f'bed={PREHEAT_BED_TARGET}'
+            )
+            return (
+                f'Включил прогрев: экструдер {PREHEAT_EXTRUDER_TARGET}°C, '
+                f'стол {PREHEAT_BED_TARGET}°C.'
+            )
+        except Exception as e:
+            logger.exception('Failed to start preheat')
+            return str(e)
+
+    async def heaters_off(self):
+        try:
+            async with self.session.post(
+                    self.printer_url + '/printer/gcode/script',
+                    json={'script': 'TURN_OFF_HEATERS'}) as response:
+                await response.read()
+            logger.info('All heaters turned off')
+            return 'Нагреватели отключены.'
+        except Exception as e:
+            logger.exception('Failed to turn heaters off')
+            return str(e)
+
+    async def cancel_printing(self):
+        try:
+            status = await self._get_print_status()
+            print_state = status['print_stats']['state']
+            if print_state not in ('printing', 'paused'):
+                logger.info(
+                    f'Skip print cancel because printer is {print_state}'
+                )
+                return 'Сейчас ничего не печатается.'
+
+            async with self.session.post(
+                    self.printer_url + '/printer/print/cancel') as response:
+                await response.read()
+            logger.info('Print cancelled')
+            return 'Печать отменена.'
+        except Exception as e:
+            logger.exception('Failed to cancel print')
             return str(e)
 
     async def response_error(self, response):
