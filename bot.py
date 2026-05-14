@@ -226,8 +226,8 @@ def stop_print_monitoring(chat_data, job):
 async def poweroff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Power-off requested by chat={update.effective_chat.id}')
     message = await update.message.reply_text(
-        'Чтобы отменить печать, введите /cancel_printing\n\n\n'
         'Чтобы отключить нагрев, введите /heaters_off\n\n\n'
+        'Чтобы отменить печать, введите /cancel_printing\n\n\n'
         'Чтобы выключить принтер, введите /poweroff'
     )
     context.job_queue.run_once(
