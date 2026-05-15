@@ -96,13 +96,18 @@ async def preheat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def heaters_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Heaters off requested chat={update.effective_chat.id}')
+    await delete_incoming_message(update)
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.heaters_off()
-    await update.message.reply_text(result)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=result,
+    )
 
 
 async def cancel_printing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Cancel print requested chat={update.effective_chat.id}')
+    await delete_incoming_message(update)
     printer_api: PrinterAPI = context.bot_data['printer_api']
     result = await printer_api.cancel_printing()
     if result == 'Печать отменена.':
@@ -110,7 +115,10 @@ async def cancel_printing(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.chat_data,
             context.chat_data.get(PRINT_MONITOR_JOB_KEY),
         )
-    await update.message.reply_text(result)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=result,
+    )
 
 
 async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -253,8 +261,21 @@ async def delete_message(context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def delete_incoming_message(update: Update):
+    if not update.message:
+        return
+    try:
+        await update.message.delete()
+    except TelegramError:
+        logger.exception(
+            f'Failed to delete incoming command chat={update.effective_chat.id} '
+            f'message={update.message.message_id}'
+        )
+
+
 async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f'Powering off printer chat={update.effective_chat.id}')
+    await delete_incoming_message(update)
     printer_api: PrinterAPI = context.bot_data['printer_api']
     try:
         async with printer_api.session.get(
@@ -264,16 +285,20 @@ async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception(
             f'Connectivity check failed before power-off '
             f'chat={update.effective_chat.id}')
-        await update.message.reply_text(
-            'Нет соединения с принтером. Не выключаю.')
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text='Нет соединения с принтером. Не выключаю.',
+        )
         return
     host = os.getenv('HOME_SERVER_HOSTNAME')
     user = os.getenv('HOME_SERVER_USER')
     password = os.getenv('HOME_SERVER_PASSWORD')
     if not host or not user or not password:
         logger.error('Missing SSH credentials for power-off')
-        await update.message.reply_text(
-            'Не настроены параметры выключения.')
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text='Не настроены параметры выключения.',
+        )
         return
     try:
         async with asyncssh.connect(
@@ -292,11 +317,17 @@ async def poweroff_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(
                 'Power-off command executed '
                 f'command="{command_2}" exit_status={result.exit_status}')
-        await update.message.reply_text('Принтер выключен.')
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text='Принтер выключен.',
+        )
     except Exception:
         logger.exception(
             f'Power-off failed chat={update.effective_chat.id}')
-        await update.message.reply_text('Ошибка при выключении.')
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text='Ошибка при выключении.',
+        )
 
 
 async def poweron(update: Update, context: ContextTypes.DEFAULT_TYPE):
